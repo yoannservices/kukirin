@@ -520,6 +520,13 @@ function buildWorld(){
   const im=infra.build(matPlain,false,false);if(im)scene.add(im);
   for(let a=0;a<2;a++){const lm=lamps[a].build(lampMat[a],false,false);if(lm){scene.add(lm);lampMeshes[a]=lm}}
 
+  /* bâtiments détaillés : kit commun assets/building-kit.js (fenêtres en relief, portes, vitrines, toits) */
+  const BK=BuildingKit(THREE),kcity=BK.lodCity(120),KM=BK.materials({style:'stucco',roof:'tile',glass:'#3e5a70'});
+  const kx={wall_tower:{style:'concrete',wall:'#9fb3c4'},wall_brick:{style:'brick',wall:'#b06a52'},wall_metal:{style:'metal',wall:'#b4bcc4'},roof_slate:{roof:'slate'}};
+  for(const k in kx)KM[k]=BK.materials(kx[k])[k.startsWith('wall')?'wall':'roof'];
+  // yaw qui tourne la façade +z du kit vers (fx, fz)
+  const kyaw=(fx,fz)=>Math.atan2(fx,fz);
+  const kit=(x,z,yaw,o,keys)=>kcity.building(x,0,z,yaw,o,keys||null);   // par zones : détaillé de près, simplifié au loin
   /* blocs de ville */
   const pick=(r,arr)=>arr[Math.floor(r()*arr.length)];
   for(let i=0;i<NB;i++)for(let j=0;j<NB;j++){
@@ -531,8 +538,9 @@ function buildWorld(){
     if(d==='tours'){
       const cd=Math.hypot(i-5.5,j-5.5),baseH=55+(2.3-cd)*50;
       const pal=['#8fb0c8','#a8bfcc','#7d9db8','#b9c6cf','#96a9b8','#a3b4c2'];
-      const tower=(cx,cz,w,dd,h,col)=>{walls.add(G.box,cx,h/2,cz,w,h,dd,0,col,8,7.2);roofCap(cx,cz,w,dd,h);
-        if(rng()<0.5)plain.add(G.box,cx,h+4,cz,0.5,7,0.5,0,'#8a949c');addBox(cx,cz,w,dd)};
+      const tower=(cx,cz,w,dd,h,col)=>{const glass=rng()<0.55,fx=cx<x0+W/2?-1:1;
+        kit(cx,cz,kyaw(fx,0),{w:dd,d:w,h,rand:rng,tint:col,roof:'flat',equip:true,mast:rng()<0.5?7:0,...(glass?{facade:'curtain',fh:3.6,gfh:5}:{facade:'ribbon',fh:3.5,shop:true,door:'-z',doorType:'block'})},{wall:'wall_tower'});
+        addBox(cx,cz,w,dd)};
       if(rng()<0.4){tower(x0+W/2,z0+W/2,44+rng()*16,44+rng()*16,baseH*1.5+rng()*40,pick(rng,pal))}
       else for(let a=0;a<2;a++)for(let b=0;b<2;b++){tower(x0+19+a*38,z0+19+b*38,26+rng()*8,26+rng()*8,baseH*(0.5+rng()*0.8)+12,pick(rng,pal))}
       for(let n=0;n<4;n++)tree(x0+4+rng()*68,z0+3+(n%2?68:2)+rng()*2,0.8);
@@ -540,9 +548,8 @@ function buildWorld(){
       const wall=['#efe3cc','#f2d9c0','#e8e4da','#d9c7a8','#f4efe6','#c9d8de'],roof=['#a64b32','#7a4a3a','#555e66','#8c3b2c','#6a5a4a'];
       for(let a=0;a<3;a++)for(let b=0;b<2;b++){
         const cx=x0+12.7+a*25.3+(rng()-0.5)*3,cz=z0+19+b*38+(rng()-0.5)*4,w=9+rng()*4,dd=8+rng()*4,h=4.6+rng()*1.6;
-        walls.add(G.box,cx,h/2,cz,w,h,dd,0,pick(rng,wall),4.5,3.8);
-        plain.add(G.pyr,cx,h+1.3,cz,w+0.9,2.6,dd+0.9,0,pick(rng,roof));
-        plain.add(G.box,cx+w*0.2,h+2.2,cz,0.6,1.6,0.6,0,'#9a8f84');
+        const slate=rng()<0.4;
+        kit(cx,cz,b?0:Math.PI,{w,d:dd,h:h+0.3,fh:(h+0.3)/2,rand:rng,tint:pick(rng,wall),roof:'gable',rise:Math.min(dd*0.36,3),shutters:true,quoins:rng()<0.4,win:[1.0,1.15]},slate?{roof:'roof_slate'}:null);
         addBox(cx,cz,w,dd);
         tree(cx+(rng()<.5?-1:1)*(w/2+3.5),cz+(rng()-.5)*10,0.9+rng()*0.3);
         if(rng()<.5)tree(cx+(rng()-.5)*8,cz+(b?-1:1)*(dd/2+5),0.8);
@@ -553,15 +560,15 @@ function buildWorld(){
         const cx=x0+19+a*38,cz=z0+19+b*38;
         if(rng()<0.18){tree(cx,cz,1);tree(cx+6,cz+4,0.8);plain.add(G.box,cx-5,0.3,cz,3,0.6,0.8,0,'#7b5a3a');continue}
         const w=30+rng()*5,dd=30+rng()*5,h=14+rng()*24;
-        walls.add(G.box,cx,h/2,cz,w,h,dd,0,pick(rng,pal),6,5);roofCap(cx,cz,w,dd,h);
-        plain.add(G.box,cx+(rng()-.5)*10,h+1.4,cz+(rng()-.5)*10,4,2,3,0,'#9aa1a6');
+        const brick=rng()<0.5;
+        kit(cx,cz,b?0:Math.PI,{w,d:dd,h,fh:3.4,rand:rng,tint:pick(rng,pal),roof:'flat',shop:true,door:'-z',doorType:'block',balcony:rng()<0.5?'alt':false,shutters:!brick,win:[1.3,1.6],awningColor:pick(rng,['#b3262e','#2b5d8a','#2f7a4a','#c98a1a'])},brick?{wall:'wall_brick'}:null);
         addBox(cx,cz,w,dd);
       }
     }else if(d==='entrepots'){
       const wc=['#8d98a3','#a3a8ad','#7e8d95','#b0a99a'],cc=['#d9532f','#2f6fb3','#e0a82e','#3b8a5a','#8b4a9a','#c9c9c9'];
-      const wh=(cx,cz,w,dd,h)=>{const col=pick(rng,wc);plain.add(G.box,cx,h/2,cz,w,h,dd,0,col);plain.add(G.box,cx,h+0.4,cz,w+0.5,0.8,dd+0.5,0,'#c5c9cc');
-        plain.add(G.box,cx,h*0.35,cz,w+0.15,1.2,dd+0.15,0,'#3f6a8c');addBox(cx,cz,w,dd)};
-      wh(x0+W/2,z0+15,70,26,10+rng()*4);wh(x0+W/2,z0+W-15,70,26,10+rng()*4);
+      const wh=(cx,cz,w,dd,h,face)=>{kit(cx,cz,face,{w,d:dd,h,fh:h,rand:rng,tint:pick(rng,wc),roof:'flat',parapet:0.6,door:'+x',plinth:false,lintel:false,win:[2.4,1.0],bay:5,faces:['-z','+x','-x'],
+          openings:[-24,-12,0,12,24].map(o=>({face:'+z',s:o,w:7,h:Math.min(5.5,h-1.5),type:'garage'}))},{wall:'wall_metal'});addBox(cx,cz,w,dd)};
+      wh(x0+W/2,z0+15,70,26,10+rng()*4,Math.PI);wh(x0+W/2,z0+W-15,70,26,10+rng()*4,0);
       for(let n=0;n<9;n++){const cx=x0+8+rng()*60,cz=z0+36+rng()*4+(n%3)*10,hor=rng()<.5,cw=hor?12:2.5,cd=hor?2.5:12,lv=1+(rng()*2|0);
         for(let s=0;s<lv;s++)plain.add(G.box,cx,1.3+s*2.6,cz,cw,2.6,cd,0,pick(rng,cc));addBox(cx,cz,cw,cd)}
     }else{
@@ -584,12 +591,13 @@ function buildWorld(){
   const gm=new Mesher();
   GARAGES.forEach((gr,idx)=>{
     const cx=gr.x+gr.sx*9.8,cz=gr.z+gr.sz*9.8,w=gr.sz!==0?9:3.2,dd=gr.sz!==0?3.2:9;
-    gm.add(G.box,cx,1.8,cz,w,3.6,dd,0,'#2d3945');gm.add(G.box,cx,3.8,cz,w+0.4,0.4,dd+0.4,0,'#3fd99a');
-    gm.add(G.box,cx-gr.sx*0+(gr.sz!==0?0:0),1.4,cz-gr.sz*1.62,gr.sz!==0?6.4:0.1,2.6,gr.sz!==0?0.1:6.4,0,'#8fb5d0');
+    kit(cx,cz,kyaw(0,-gr.sz),{w:9,d:3.2,h:3.6,fh:3.6,roof:'flat',parapet:0.35,equip:false,shop:['+z'],door:false,faces:[],awningColor:'#1f8a5e',plinth:0.3,rand:Math.random,tint:'#3a4a5a'});
+    gm.add(G.box,cx,3.9,cz,w+0.4,0.3,dd+0.4,0,'#3fd99a');
     addBox(cx,cz,w,dd);
     m.fillStyle='#3fd99a';m.fillRect(mp(gr.x)-3,mp(gr.z)-3,6,6);
   });
   const gmesh=gm.build(matPlain);if(gmesh)scene.add(gmesh);
+  scene.add(kcity.group(KM));
   const beamMat=new THREE.MeshBasicMaterial({color:0x3fd99a,transparent:true,opacity:0.22,depthWrite:false,side:THREE.DoubleSide});
   GARAGES.forEach(gr=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(3,3,46,16,1,true),beamMat);b.position.set(gr.x,23,gr.z);scene.add(b);
     const r=new THREE.Mesh(new THREE.RingGeometry(10.6,12,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x3fd99a,transparent:true,opacity:.7}));r.position.set(gr.x,0.06,gr.z);scene.add(r)});
