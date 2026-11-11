@@ -1162,7 +1162,18 @@ function makeHeli(){
   const l2=new THREE.Mesh(RK.rbox(0.18,0.08,0.18,.03,1),SIREN_B);l2.position.set(0.45,-0.82,0.6);g.add(l2);
   const beam=new THREE.Mesh(new THREE.CylinderGeometry(0.4,6,1,16,1,true),beamMatH);scene.add(beam);
   scene.add(g);
-  const o={g,rotor,tr,beam,x:P.x+40,y:36,z:P.z+40,vx:0,vz:0,h:0,orb:Math.random()*6};helis.push(o);return o;
+  const o={g,rotor,tr,beam,x:P.x+40,y:36,z:P.z+40,vx:0,vz:0,h:0,orb:Math.random()*6};helis.push(o);realHeli(o);return o;
+}
+/* vrai hélicoptère (MH-6 Little Bird, le Colibri du monde ouvert, CC-BY, crédits dans assets/models/CREDITS.md) à la place de la coque procédurale ; rotors animés gardés, recalés sur le modèle */
+let heliGLB=null;
+function realHeli(o){
+  heliGLB=heliGLB||import(new URL('../../assets/glb.js',location.href).href).then(m=>m.loadGLB(new URL('../../assets/models/mh6-little-bird.glb',location.href).href).then(s=>{const d=[];s.traverse(o=>{if(/^helicopter\.?00[12]/.test(o.name))d.push(o)});d.forEach(o=>o.parent.remove(o));return m.fitGLB(s,9.9,0)})); // disques de rotor plats du .glb retirés : les rotors animés les remplacent
+  heliGLB.then(f=>{
+    if(!o.g.parent)return;
+    const b=f.clone(true),h=new THREE.Group();h.add(b);const box=new THREE.Box3().setFromObject(h);
+    h.position.y=-1.0-box.min.y;o.g.remove(o.g.children[0]);o.g.add(h);   // patins au niveau de l'ancienne coque
+    o.rotor.position.y=box.max.y+h.position.y-.05;o.tr.position.z=box.min.z+.35;
+  }).catch(e=>console.warn('Hélicoptère non chargé',e));
 }
 
 function removeVehicle(u){if(u.officer)removeOfficer(u.officer);scene.remove(u.grp);const i=vehicles.indexOf(u);if(i>=0)vehicles.splice(i,1)}
@@ -2255,12 +2266,23 @@ $('#bustBtn').onclick=()=>{$('#ovBusted').hidden=true;GAME.state='play'};
 function rebuildPlayer(){
   if(playerMesh){endCrash();scene.remove(playerMesh);disposeScooter(playerMesh)}
   playerMesh=buildScooter(SV.cur,curOwned().color);scene.add(playerMesh);
-  // vraie trottinette électrique (Sketchfab « Tier scooter » par Niilo Poutanen, CC-BY) à la place des pièces procédurales (supprimées) ; le pilote reste
-  const pm=playerMesh;
-  import(new URL('../../assets/glb.js',location.href).href).then(m=>m.loadGLB(new URL('../../assets/models/tier-scooter.glb',location.href).href).then(g=>{
-    if(pm!==playerMesh)return;const d=pm.userData;m.purge(pm,[d.rider,d.displayMesh]);const D=SCOOTER_DESIGNS[SV.cur]||SCOOTER_DESIGNS.g2,k=(D.front-D.rear)/.97,f=m.fitGLB(g,1.3,Math.PI);
-    /* repère du corps (sol y=0, comme le pilote) : roues du modèle (z=+.49/-.48) calées sur front/rear de la conception ; tilt est lui décalé sur l'essieu arrière */
-    f.scale.setScalar(k);f.position.z=(D.front+D.rear)/2-.005*k;d.riderBody.add(f)})).catch(e=>console.warn('Trottinette non chargée',e));
+  // vraie trottinette électrique à la place des pièces procédurales (supprimées) ; le pilote reste. G6 : « Kukirin G25 Pro » (oskarbax, CC-BY) ; les autres : « Tier scooter » (Niilo Poutanen, CC-BY)
+  const pm=playerMesh,g25=SV.cur==='g6';
+  import(new URL('../../assets/glb.js',location.href).href).then(m=>m.loadGLB(new URL('../../assets/models/'+(g25?'kukirin-g25':'tier-scooter')+'.glb',location.href).href).then(g=>{
+    if(pm!==playerMesh)return;const d=pm.userData;m.purge(pm,[d.rider,d.displayMesh]);const D=SCOOTER_DESIGNS[SV.cur]||SCOOTER_DESIGNS.g2,f=m.fitGLB(g,1.3,g25?0:Math.PI);
+    /* repère du corps (sol y=0, comme le pilote) : roues du modèle calées sur front/rear de la conception ; tilt est lui décalé sur l'essieu arrière.
+       Tier : roues à z=+.49/-.48. G25 (photogrammétrie d'un bloc) : essieux mesurés aux points de contact au sol, sur l'axe (la béquille est sur le côté) */
+    let wb=.97,zc=-.005;
+    if(g25){f.updateMatrixWorld(true);const v=new THREE.Vector3();let a=0,na=0,b=0,nb=0;f.traverse(o=>{if(!o.isMesh)return;const P=o.geometry.attributes.position;for(let i=0;i<P.count;i++){v.fromBufferAttribute(P,i).applyMatrix4(o.matrixWorld);if(v.y<.015&&Math.abs(v.x)<.06){if(v.z>0){a+=v.z;na++}else{b+=v.z;nb++}}}});
+      if(na&&nb){wb=a/na-b/nb;zc=(a/na+b/nb)/2}}
+    const k=(D.front-D.rear)/wb;f.scale.setScalar(k);f.position.z=(D.front+D.rear)/2-zc*k;d.riderBody.add(f);seatDisplay(d.riderBody,f,d.displayMesh)})).catch(e=>console.warn('Trottinette non chargée',e));
+}
+/* compteur posé au centre du guidon du vrai modèle (les cotes du guidon procédural ne sont plus celles du .glb) */
+function seatDisplay(body,model,disp){
+  body.updateMatrixWorld(true);const inv=body.matrixWorld.clone().invert(),v=new THREE.Vector3(),pts=[];let top=-9;
+  model.traverse(o=>{if(!o.isMesh)return;const P=o.geometry.attributes.position;for(let i=0;i<P.count;i+=2){v.fromBufferAttribute(P,i).applyMatrix4(o.matrixWorld).applyMatrix4(inv);if(Math.abs(v.x)<.05){pts.push(v.y,v.z);if(v.y>top)top=v.y}}});
+  let zs=0,n=0;for(let i=0;i<pts.length;i+=2)if(pts[i]>top-.03){zs+=pts[i+1];n++}
+  if(n){disp.position.set(0,top-.008,zs/n);disp.scale.setScalar(.55)}  // sur l'écran rond du modèle, à sa taille
 }
 
 function disposeScooter(model){
